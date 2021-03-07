@@ -5,18 +5,13 @@ from .request import Request
 REQUEST_PATTERN = r"gemini://([^/]+)(/.*)*\r\n"
 
 
-def build_parser(server_hostname):
-    def parse_request(data):
-        match = re.match(REQUEST_PATTERN, data)
+def parse_request(data):
+    data_string = data.decode('utf-8')
+    match = re.match(REQUEST_PATTERN, data_string)
 
-        if match is None:
-            return None
+    if match is None:
+        return None
 
-        (hostname, path) = match.groups()
+    (hostname, path) = match.groups()
 
-        if hostname != server_hostname:
-            return None
-
-        return Request(hostname, path)
-
-    return parse_request
+    return Request(hostname, path)

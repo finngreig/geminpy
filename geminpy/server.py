@@ -1,8 +1,13 @@
 import socket
 import ssl
 import select
+import time
+from threading import Thread
 from pathlib import Path
+
+from .parser import parse_request
 from .route import Route
+import geminpy.response as response
 
 
 class GeminiServer:
@@ -25,13 +30,19 @@ class GeminiServer:
                 self.routes.remove(r)
                 break
 
-    def serve(self):
+    def _route(self, req_path):
+        for r in self.routes:
+            if r.path_matches(req_path):
+                return r
+        return None
+
+    def _serve(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.setblocking(False)
             sock.bind((self.address, self.port))
             sock.listen(5)
-            with self.ssl_context.wrap_socket(sock, server_side=True) as ssock:
-                inputs = [ssock]
+            with self.ssl_context.wrap_socket(sock, server_side=True) as secure_socket:
+                inputs = [secure_socket]
                 outputs = []
                 messages = {}
 
@@ -39,7 +50,7 @@ class GeminiServer:
                     readable, writable, exceptional = select.select(
                         inputs, outputs, inputs)
                     for s in readable:
-                        if s is ssock:
+                        if s is secure_socket:
                             connection, client_address = s.accept()
                             connection.setblocking(0)
                             inputs.append(connection)
@@ -47,8 +58,14 @@ class GeminiServer:
                         else:
                             data = s.recv(1026)
                             if data:
-                                print(data)
-                                messages[s] = b'20 text/plain\r\nHello World'
+                                req = parse_request(data)
+                                route = self._route(req.path)
+                                if route:
+                                    res = route.func(req)
+                                else:
+                                    res = response.Response(response.ResponseCodes.PERMANENT_FAILURE, "Not Found")
+                                messages[s] = res.encode()
+                                print(res.encode())
                                 if s not in outputs:
                                     outputs.append(s)
 
@@ -65,3 +82,14 @@ class GeminiServer:
                             outputs.remove(s)
                         s.close()
                         del messages[s]
+
+    def listen(self, block=True):
+        t = Thread(target=self._serve, daemon=True)
+        t.start()
+        print(f"Geminpy listening on {self.address}:{self.port}")
+        if block:
+            while True:
+                try:
+                    time.sleep(2)
+                except KeyboardInterrupt:
+                    exit(0)

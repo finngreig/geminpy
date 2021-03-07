@@ -18,4 +18,4 @@ class Response:
         self.body = body
 
     def encode(self):
-        return f"{self.code} {self.meta}\r\n{self.body if self.body else ''}"
+        return str.encode(f"{self.code.value} {self.meta}\r\n{self.body if self.body else ''}")
